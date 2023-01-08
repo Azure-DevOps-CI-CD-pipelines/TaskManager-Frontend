@@ -1,0 +1,65 @@
+trigger:
+- main
+
+pool:
+  vmImage: ubuntu-latest
+
+stages:
+- stage: Initialize
+  displayName: 'Build'
+  jobs:
+    - job: 'BuildTaskManagerFrontend'
+      displayName: 'Build'
+      steps:
+      - task: NodeTool@0
+        inputs:
+          versionSpec: '16.x'
+        displayName: 'Install Node.js'
+
+      - script: |
+          displayName: 'npm install'
+          npm install -g @angular/cli
+          npm install
+      
+      - task: Npm@1
+        displayName: 'npm build'
+        inputs:
+          command: 'custom'
+          customCommand: 'run build-prod'
+      
+      - task: PublishBuildArtifacts@1
+        displayName: 'Publish BuildArtifacts'
+        inputs:
+          PathtoPublish: 'dist'
+          ArtifactName: 'dist'
+
+- stage: Deploy
+  displayName: 'Deploy to Azure app service'
+  dependsOn: Initialize
+  condition: succeeded()
+  jobs:
+    - deployment: deployTaskManagerFrontend
+      displayName: 'Deploy'
+      environment: 'stage'
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+            - task: DownloadPipelineArtifact@2
+              displayName: 'Download the Pipeline Artifact'
+              inputs:
+                artifactName: 'dist'
+                targetPath: '$(System.DefaultWorkingDirectory)/_taskmanager-frontend/dist/crud-task-fe'
+            
+            - task: AzureCLI@1
+              displayName: Deploy the UI
+              inputs:
+                azureSubscription: 'Free Trial(d0d16648-c69e-40ef-9ff6-3551f4fcec30)'
+                scriptLocation: inlineScript
+                inlineScript: |
+                  az storage blob upload-batch \
+                  --destination \taskmanager \
+                  --account-name "taskmanagerfrontend" \
+                  --source "$(System.DefaultWorkingDirectory)/_taskmanager-frontend/dist/crud-task-fe"
+            
+              
